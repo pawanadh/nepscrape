@@ -127,7 +127,6 @@
          (map s->Stock)                                     ; convert to Stock record
          )))
 
-
 (comment
   ;(def nodes (fetch-url *floorsheet-url*))
   (time (scrape-page *floorsheet-url*))                     ;10.357473 msecs
@@ -136,41 +135,6 @@
 (defn save! [mdb mcoll s]
   (doseq [m s]
     (upsert! mdb mcoll m)))
-
-(comment
-
-  (def page-urls (page-urls))
-
-  (request-downloads page-urls)
-
-  (time
-    (def data
-      (let [c (async/chan)
-            res (atom [])]
-        ;; fetch em all
-        (doseq [url page-urls]
-          (async/go (async/>! c (scrape-page url))))
-        ;; gather results
-        (doseq [_ page-urls]
-          (swap! res conj (async/<!! c)))
-        @res
-        )))
-  ;"Elapsed time: 10764.024983 msecs"
-
-  (time
-    (def data-thread
-      (let [c (async/chan)
-            res (atom [])]
-        ;; fetch em all
-        (doseq [url page-urls]
-          (async/thread (async/>!! c (scrape-page url))))
-        ;; gather results
-        (doseq [_ page-urls]
-          (swap! res conj (async/<!! c)))
-        @res
-        )))
-  ;"Elapsed time: 19727.498958 msecs"
-  )
 
 (defn -main [& args]
   (let [nepse-db "nepse"
