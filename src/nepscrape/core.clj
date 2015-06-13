@@ -83,6 +83,19 @@
 (def extract-day (partial extract-int 6 8))
 (def extract-id (partial extract-int 8))
 
+(defn split-contract-no
+  "str = 201506082574632 => {:year 2015 :month 6 :day 8 :day-sn 2574632}"
+  [str]
+  (let [
+        yr (extract-yr str)
+        mth (extract-mth str)
+        day (extract-day str)
+        day-sn (extract-id str)]
+    {:year yr :month mth :day day :day-sn day-sn}))
+
+(comment
+  (split-contract-no "201506082574632"))
+
 ; creates Stock record
 (defn s->Stock
   ;("20" "201506082574632" ["SCB" "Standard Chartered Bank Limited"] "21" "44" "100" "1924" "192400.00")
@@ -99,13 +112,7 @@
             (assoc temp-m :symbol symbol :company name))))
 
        ; extract out year, month, day and day's SN from contract-no
-       ((fn [m]
-          (let [contract-no (:contract-no m)
-                yr (extract-yr contract-no)
-                mth (extract-mth contract-no)
-                day (extract-day contract-no)
-                day-sn (extract-id contract-no)]
-            (assoc m :year yr :month mth :day day :day-sn day-sn))))
+       ((fn [m] (merge m (split-contract-no (:contract-no m)))))
        ))
 
 (comment

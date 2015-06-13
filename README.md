@@ -1,6 +1,6 @@
-# nepse-scrape
+# nepscrape
 
-A Clojure library designed to ... well, that part is up to you.
+NEPSE scrapping.
 
 ## Usage
 
