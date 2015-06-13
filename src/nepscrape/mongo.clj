@@ -1,4 +1,4 @@
-(ns nepse-scrape.mongo
+(ns nepscrape.mongo
   (:require [monger.core :as mongo]
             [monger.collection :as mcoll]))
 

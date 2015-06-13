@@ -1,4 +1,4 @@
-(ns nepse-scrape.util)
+(ns nepscrape.util)
 
 (defn- parse-if [str fn]
   (try

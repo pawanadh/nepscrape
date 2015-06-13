@@ -1,4 +1,4 @@
-(defproject nepse-scrape "0.1.0-SNAPSHOT"
+(defproject nepscrape "0.1.0-SNAPSHOT"
             :description "FIXME: write description"
             :url "http://example.com/FIXME"
             :license {:name "Eclipse Public License"
@@ -8,6 +8,6 @@
                            [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                            [com.novemberain/monger "2.1.0"]]
             :aot :all
-            :main nepse-scrape.core
+            :main nepscrape.core
             :profiles {:dev {:plugins [[lein-dotenv "RELEASE"]
                                        [lein-marginalia "0.8.0"]]}})

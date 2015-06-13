@@ -1,8 +1,8 @@
-(ns nepse-scrape.core
+(ns nepscrape.core
   (:require [net.cgrand.enlive-html :as html]
             [clojure.core.async :as async]
-            [nepse-scrape.util :as util]
-            [nepse-scrape.mongo :refer :all]))
+            [nepscrape.util :as util]
+            [nepscrape.mongo :refer :all]))
 
 
 (defn fetch-url [url]

@@ -1,4 +1,4 @@
-(ns nepse-scrape.core-test
+(ns nepscrape.core-test
   (:require [clojure.test :refer :all]
             [nepse-scrape.core :refer :all]))
 
