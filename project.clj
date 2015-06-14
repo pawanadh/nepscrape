@@ -6,7 +6,8 @@
             :dependencies [[org.clojure/clojure "1.6.0"]
                            [enlive "1.1.5"]
                            [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                           [com.novemberain/monger "2.1.0"]]
+                           [com.novemberain/monger "2.1.0"]
+                           [cheshire "5.5.0"]]
             :aot :all
             :main nepscrape.core
             :profiles {:dev {:plugins [[lein-dotenv "RELEASE"]

@@ -2,7 +2,8 @@
   (:require [net.cgrand.enlive-html :as html]
             [clojure.core.async :as async]
             [nepscrape.util :as util]
-            [nepscrape.mongo :refer :all]))
+            [nepscrape.mongo :refer :all]
+            [cheshire.core :as json]))
 
 
 (defn fetch-url [url]
@@ -42,6 +43,7 @@
                                ((partial apply str))
                                (Integer/parseInt)))]
 
+    ; make URLs
     (->> (range 2 (parse-page-count pager-text))
          (map #(format *floorsheet-page-url-format* %)))))
 
@@ -66,7 +68,7 @@
       ;let contract-no and company be string
       [field b]
       ;otherwise convert into double
-      [field (util/parse-double b)])))
+      [field (util/parse-if-double b)])))
 
 (comment
   (idx-into-field [0 "123"]))
@@ -144,35 +146,55 @@
     (upsert! mdb mcoll m)))
 
 (defn -main [& args]
-  (let [nepse-db "nepse"
-        coll "floorsheet"
-        mongodb-uri (str "mongodb://127.0.0.1:27017/" nepse-db)
-        conn (mongo-connect mongodb-uri)
-        db (:db conn)
-        page-urls (page-urls)
-        _ (println (str (count page-urls) " pages."))
-        fs-chan (async/chan (count page-urls))]
+  (let [[out & opts] args
+        file? (= out "-file")
+        mongo? (= out "-mongo")]
 
-    (doseq [url page-urls]
-      (async/go
-        (let [data (scrape-page url)]
-          (async/>! fs-chan data)
-          (println (str (count data) " docs pushed to fs-chan.")))))
+    (if (or file? mongo?)
+      (let [urls (page-urls)
+            page-count (count urls)
+            _ (println (str page-count " pages."))
 
-    ; save sequential
-    ;(doseq [_ page-urls]
-    ;  (save! db coll (async/<!! fs-chan))
-    ;  (println "Data saved."))
+            ch (async/chan (count urls))]
+        ; go processes to scrape floorsheet pages.
+        (doseq [url urls]
+          (async/go
+            (let [data (scrape-page url)]
+              (async/>! ch data)
+              (println (str url " :: " (count data) " => channel.")))))
 
-    ; use threads for saving data
-    ; uses callback technique suggested in Joy of Clojure book.
-    (let [fs (for [_ page-urls]
-               (future
-                 (let [data (async/<!! fs-chan)]
-                   (save! db coll data)
-                   (println (str (count data) " docs saved.")))))]
+        (case out
+          "-file" (let [[file] opts
+                        res (atom [])]
+                    (doseq [_ urls]
+                      (println "=> atom")
+                      (swap! res into (async/<!! ch)))
 
-      ; wait till all futures completes.
-      (doseq [f fs] @f))
+                    (println (str file ", Total stocks = " (count @res)))
+                    (json/generate-stream @res (clojure.java.io/writer file)))
 
-    (println "DONE.")))
+          "-mongo" (let [[m-uri m-coll] opts
+                         m-conn (mongo-connect m-uri)
+                         m-db (:db m-conn)]
+                     ; use threads for saving data
+                     ; uses future as callback technique suggested in Joy of Clojure book.
+                     (let [fs (for [_ urls]
+                                (future
+                                  (let [data (async/<!! ch)]
+                                    (save! m-db m-coll data)
+                                    (println (str (count data) " docs saved.")))))]
+
+                       ; wait till all futures completes.
+                       (doseq [f fs] @f))))
+
+        (println "** DONE **"))
+
+      ; output not supported
+      (let []
+        (println "Usage:")
+        (println "lein run -mongo mongodb://server:port/db coll")
+        (println "lein run -file file.json")))
+    ))
+
+; lein run -mongo mongodb://127.0.0.1:27017/nepse floorsheet
+; lein run -file floorsheet.json
