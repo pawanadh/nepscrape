@@ -1,6 +1,6 @@
 # nepscrape
 
-NEPSE scrapping.
+NEPSE (Nepal Stock Exchange) data scrapping.
 
 ## Usage
 ```
