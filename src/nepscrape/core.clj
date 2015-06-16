@@ -3,7 +3,8 @@
             [clojure.core.async :as async]
             [nepscrape.util :as util]
             [nepscrape.mongo :refer :all]
-            [cheshire.core :as json]))
+            [cheshire.core :as json])
+  (:import (java.time LocalDateTime)))
 
 
 (defn fetch-url [url]
@@ -12,7 +13,7 @@
 (def ^:dynamic *floorsheet-url* "http://www.nepalstock.com.np/floorsheet")
 (def ^:dynamic *floorsheet-page-url-format* "http://www.nepalstock.com.np/main/floorsheet/index/%s/id/desc/")
 
-(defrecord Stock [sn contract-no symbol company buyer seller quantity rate amount])
+(defrecord Stock [sn contract-no symbol company buyer seller quantity rate amount year month day day-sn scrape-date])
 
 (def FLOORSHEET-FIELDS {0  :sn
                         1  :contract-no
@@ -25,12 +26,14 @@
                         8  :year
                         9  :month
                         10 :day
-                        11 :day-sn})
+                        11 :day-sn
+                        12 :scrape-date})
 
 (defn page-urls
-  "Parse pagination component in floor sheet page and gets # of pages."
-  []
-  (let [pager-text (-> (fetch-url *floorsheet-url*)
+  "goto *floorsheet-url*
+  parse pagination component & gets # of pages."
+  [url]
+  (let [pager-text (-> (fetch-url url)
                        (html/select [:div.pager html/first-child])
                        ((partial map html/text))
                        first)
@@ -41,11 +44,17 @@
                                last
                                ((partial filter #(Character/isDigit %))) ;filter digits only (removes escapse chars)
                                ((partial apply str))
-                               (Integer/parseInt)))]
+                               (Integer/parseInt)))
 
-    ; make URLs
-    (->> (range 2 (parse-page-count pager-text))
-         (map #(format *floorsheet-page-url-format* %)))))
+        ; make URLs
+        page-urls (->> (range 1 (inc (parse-page-count pager-text)))
+                       (map #(format *floorsheet-page-url-format* %)))]
+    ;(conj page-urls *floorsheet-url*)                       ; conj first page
+    page-urls
+    ))
+
+(comment
+  (count (page-urls *floorsheet-url*)))
 
 (defn- node-text
   "If :title attribute is available in td-node, returns a vector of :title attribute value
@@ -115,6 +124,7 @@
 
        ; extract out year, month, day and day's SN from contract-no
        ((fn [m] (merge m (split-contract-no (:contract-no m)))))
+       ((fn [m] (assoc m :scrape-date (str (LocalDateTime/now)))))
        ))
 
 (comment
@@ -145,56 +155,131 @@
   (doseq [m s]
     (upsert! mdb mcoll m)))
 
+;(defn request-downloads
+;  "Starts go processes for each url (in urls) to scrape data from the page.
+;  Each go process puts data in ch channel."
+;  [urls ch]
+;  (doseq [url urls]
+;    (async/thread
+;      (let [data (scrape-page url)]
+;        (async/>!! ch data)
+;        (println (str url " :: " (count data) " => channel."))))))
+
+; *
+(defn req-downloads [urls]
+  "Starts go processes for each url. Returns a seq of channels."
+  (for [url urls]
+    (async/go
+      (let [data (scrape-page url)
+            _ (println (str url " = " (count data)))]
+        data))))
+; *
+(defn save-to-mongo<!!
+  "Saves data available in channels into MongoDB. It does one <!! per channel.
+  Starts a future for channel and blocks till all futures are complete."
+  [mongo-db mongo-coll chs]
+  (let [fs (for [ch chs]
+             (future
+               (let [data (async/<!! ch)]
+                 (save! mongo-db mongo-coll data)
+                 (println (str (count data) " docs => MonogoDB.")))))]
+    (println (str "Futures = " (count fs)))
+    (doseq [f fs] @f)))
+
+(defn collect-into-atom<!!
+  "Collects data from a seq of channels into an atom and returns that atom.
+  It performs one  <!! per channel."
+  [chs]
+  (let [res (atom [])]
+    (doseq [ch chs]
+      (swap! res into (async/<!! ch)))
+    res))
+
+(defn write-data! [file data]
+  (json/generate-stream data (clojure.java.io/writer file)))
+
+; *
 (defn -main [& args]
+  {:pre []}
   (let [[out & opts] args
-        file? (= out "-file")
-        mongo? (= out "-mongo")]
+        file? (and (= out "-file") (= 1 (count opts)))
+        mongo? (and (= out "-mongo") (= 2 (count opts)))]
 
     (if (or file? mongo?)
-      (let [urls (page-urls)
-            page-count (count urls)
-            _ (println (str page-count " pages."))
+      (case out
+        "-file" (let [[file] opts]
+                  (->> *floorsheet-url*
+                       (page-urls)
+                       (req-downloads)
+                       (collect-into-atom<!!)
+                       deref
+                       (write-data! file)))
 
-            ch (async/chan (count urls))]
-        ; go processes to scrape floorsheet pages.
-        (doseq [url urls]
-          (async/go
-            (let [data (scrape-page url)]
-              (async/>! ch data)
-              (println (str url " :: " (count data) " => channel.")))))
+        "-mongo" (let [[m-uri m-coll] opts
+                       m-conn (mongo-connect m-uri)
+                       m-db (:db m-conn)]
 
-        (case out
-          "-file" (let [[file] opts
-                        res (atom [])]
-                    (doseq [_ urls]
-                      (println "=> atom")
-                      (swap! res into (async/<!! ch)))
+                   (->> *floorsheet-url*
+                        (page-urls)
+                        (req-downloads)
+                        (save-to-mongo<!! m-db m-coll))))
 
-                    (println (str file ", Total stocks = " (count @res)))
-                    (json/generate-stream @res (clojure.java.io/writer file)))
-
-          "-mongo" (let [[m-uri m-coll] opts
-                         m-conn (mongo-connect m-uri)
-                         m-db (:db m-conn)]
-                     ; use threads for saving data
-                     ; uses future as callback technique suggested in Joy of Clojure book.
-                     (let [fs (for [_ urls]
-                                (future
-                                  (let [data (async/<!! ch)]
-                                    (save! m-db m-coll data)
-                                    (println (str (count data) " docs saved.")))))]
-
-                       ; wait till all futures completes.
-                       (doseq [f fs] @f))))
-
-        (println "** DONE **"))
-
-      ; output not supported
+      ; else
       (let []
         (println "Usage:")
         (println "lein run -mongo mongodb://server:port/db coll")
         (println "lein run -file file.json")))
+
+    (println "** DONE **")
     ))
+
+;(defn -main [& args]
+;  (let [[out & opts] args
+;        file? (= out "-file")
+;        mongo? (= out "-mongo")]
+;
+;    (if (or file? mongo?)
+;      (let [urls (page-urls)
+;            page-count (count urls)
+;            _ (println (str page-count " pages."))
+;
+;            ch (async/chan (count urls))]
+;
+;        ; go processes to scrape floorsheet pages.
+;        (request-downloads urls ch)
+;
+;        (case out
+;          "-file" (let [[file] opts
+;                        res (atom [])]
+;                    (doseq [_ urls]
+;                      (println "=> atom")
+;                      (swap! res into (async/<!! ch)))
+;
+;                    (println (str file ", Total stocks = " (count @res)))
+;                    (json/generate-stream @res (clojure.java.io/writer file)))
+;
+;          "-mongo" (let [[m-uri m-coll] opts
+;                         m-conn (mongo-connect m-uri)
+;                         m-db (:db m-conn)]
+;                     ; use threads for saving data
+;                     ; uses future as callback technique suggested in Joy of Clojure book.
+;                     (let [fs (for [_ urls]
+;                                (future
+;                                  (let [data (async/<!! ch)]
+;                                    (save! m-db m-coll data)
+;                                    (println (str (count data) " docs saved.")))))]
+;
+;                       ; wait till all futures completes.
+;                       (doseq [f fs] @f))))
+;
+;        (println "** DONE **"))
+;
+;      ; output not supported
+;      (let []
+;        (println "Usage:")
+;        (println "lein run -mongo mongodb://server:port/db coll")
+;        (println "lein run -file file.json")))
+;    ))
 
 ; lein run -mongo mongodb://127.0.0.1:27017/nepse floorsheet
 ; lein run -file floorsheet.json
