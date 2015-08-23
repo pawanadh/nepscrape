@@ -6,7 +6,9 @@ NEPSE (Nepal Stock Exchange) data scrapping.
 
 ## Usage
 ```
-lein run -mongo mongodb://server:port/db coll
+lein run -mongo mongodb://server:port/db
 ;or
-lein run -file file.json
+lein run -file
+;or
+lein run -email from password to
 ```

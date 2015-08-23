@@ -1,4 +1,5 @@
-(ns nepscrape.util)
+(ns nepscrape.util
+  (:require [cheshire.core :as json]))
 
 (defn- parse-if [str fn]
   (try
@@ -15,3 +16,12 @@
   "Converts str into int if convertible otherwise returns str."
   [str]
   (parse-if str (fn [arg] (Integer/parseInt arg))))
+
+(defn delf-if-exists
+  "Deletes file if exists."
+  [file]
+  (if (.exists (clojure.java.io/as-file file))
+    (clojure.java.io/delete-file file)))
+
+(defn write-json! [file data]
+  (json/generate-stream data (clojure.java.io/writer file)))
