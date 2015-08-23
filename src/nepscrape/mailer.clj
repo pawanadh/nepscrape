@@ -3,8 +3,8 @@
   (:import (java.time LocalDateTime)
            (java.io File)))
 
-(def def-email "nepscrape@gmail.com")
-(def def-email-pass "nepsescrape")
+(def def-email "")
+(def def-email-pass "")
 
 (defn send-email
   ([from pass to & attachments]
@@ -29,5 +29,5 @@
                          :subject subject
                          :body    body}))))
 (comment
-  (send-email "nepscrape@gmail.com" "nepsescrape" "tlk.thp.mgr@gmail.com" "floorsheet.json" "shareprice.json"))
+  (send-email "from@gmail.com" "pass" "to@gmail.com" "floorsheet.json" "shareprice.json"))
 

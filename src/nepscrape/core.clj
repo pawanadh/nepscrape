@@ -143,7 +143,7 @@
 
 (def ^:dynamic *from* def-email)
 (def ^:dynamic *from-pass* def-email-pass)
-(def ^:dynamic *to* "tlk.thp.mgr@gmail.com")
+(def ^:dynamic *to* "to@gmail.com")
 
 (defn scrape-email-job
   []
